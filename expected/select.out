@@ -1,0 +1,128 @@
+/*-------------------------------------------------------------------------
+ *
+ * select.sql
+ *    Test select statements
+ *
+ *    REQUIRES:
+ *      ORC_FDW_DIR variable to be set in the shell which is initiating
+ *      the regression.
+ *
+ * 2020, Hamid Quddus Akhtar.
+ *
+ * Copyright (c) 2020, Highgo Software Inc.
+ *
+ * IDENTIFICATION
+ *    sql/select.sql
+ *
+ *-------------------------------------------------------------------------
+ */
+\set orc_sample_dir     `echo ${ORC_FDW_DIR}/sample/data`
+/* Create extension */
+CREATE EXTENSION orc_fdw;
+/* Create server */
+CREATE SERVER orc_srv FOREIGN DATA WRAPPER orc_fdw;
+/* Import all files with .orc extension */
+IMPORT
+FOREIGN SCHEMA :"orc_sample_dir"
+FROM    SERVER orc_srv
+INTO    public;
+INFO:  ORC file myfile.orc found for schema import.
+INFO:  ORC file decimal.orc found for schema import.
+INFO:  ORC file orc_file_11_format.orc found for schema import.
+WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orctest/sample/data/orc_file_11_format.orc version 0.11.
+HINT:  This may still work, but it's strongly recommended to use files that are supported by the fdw.
+INFO:  Schema read successfully from 3 orc files.
+/* myfile - Let's try select in different ways */
+SELECT  *
+FROM    myfile
+LIMIT   5;
+ x | y  
+---+----
+ 0 |  0
+ 1 |  3
+ 2 |  6
+ 3 |  9
+ 4 | 12
+(5 rows)
+
+SELECT  *
+FROM    myfile
+WHERE   x IN (3, 9, 390);
+  x  |  y   
+-----+------
+   3 |    9
+   9 |   27
+ 390 | 1170
+(3 rows)
+
+SELECT  count(*)
+FROM    myfile;
+ count 
+-------
+ 10000
+(1 row)
+
+SELECT  SUM(x)
+        , y
+FROM    myfile
+WHERE   x < 20
+GROUP
+BY      y
+HAVING  SUM(x) < 10
+ORDER
+BY      y;
+ sum | y  
+-----+----
+   0 |  0
+   1 |  3
+   2 |  6
+   3 |  9
+   4 | 12
+   5 | 15
+   6 | 18
+   7 | 21
+   8 | 24
+   9 | 27
+(10 rows)
+
+/* orc_file_11_format - Let's try select in different ways */
+SELECT  boolean1
+        , CASE  boolean1
+            WHEN  true    THEN 'yes'
+            WHEN  false   THEN 'no'
+            ELSE  'never'
+          END
+        , byte1
+        , short1
+        , short1 % 5 AS short1_mod5
+        , int1
+        , int1 * 2 AS int1_x2
+        , long1
+        , long1 / 2 AS long1_half
+        , float1
+        , float1 - 0.13 AS float1_less
+        , double1
+        , double1 + 0.13 AS double1_add
+        , bytes1
+        , string1
+        , 'with string1 ' || string1 AS concat_string1
+        , ts
+        , decimal1 
+        , '2000-03-14 16:10:05'::timestamp without time zone - ts AS diff_ts
+FROM    orc_file_11_format
+LIMIT   2;
+WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orctest/sample/data/orc_file_11_format.orc version 0.11.
+HINT:  This may still work, but it's strongly recommended to use files that are supported by the fdw.
+ boolean1 | case | byte1 | short1 | short1_mod5 | int1  | int1_x2 |        long1        |     long1_half      | float1 | float1_less | double1 | double1_add |    bytes1    | string1 |  concat_string1  |            ts            |    decimal1     |            diff_ts             
+----------+------+-------+--------+-------------+-------+---------+---------------------+---------------------+--------+-------------+---------+-------------+--------------+---------+------------------+--------------------------+-----------------+--------------------------------
+ f        | no   |     1 |   1024 |           4 | 65536 |  131072 | 9223372036854775807 | 4611686018427387903 |      1 |        0.87 |     -15 |      -14.87 | \x0001020304 | hi      | with string1 hi  | Sun Mar 12 15:00:00 2000 |        0.000000 | @ 2 days 1 hour 10 mins 5 secs
+ t        | yes  |   100 |   2048 |           3 | 65536 |  131072 | 9223372036854775807 | 4611686018427387903 |      2 |        1.87 |      -5 |       -4.87 | \x           | bye     | with string1 bye | Sun Mar 12 15:00:01 2000 | 12345678.654745 | @ 2 days 1 hour 10 mins 4 secs
+(2 rows)
+
+/* Cleanup */
+DROP EXTENSION orc_fdw CASCADE;
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to server orc_srv
+drop cascades to foreign table myfile
+drop cascades to foreign table "decimal"
+drop cascades to foreign table orc_file_11_format

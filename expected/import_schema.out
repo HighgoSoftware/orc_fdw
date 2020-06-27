@@ -1,0 +1,174 @@
+/*-------------------------------------------------------------------------
+ *
+ * import_schema.sql
+ *    Test schema import functionality
+ *
+ *    REQUIRES:
+ *      ORC_FDW_DIR variable to be set in the shell which is initiating
+ *      the regression.
+ *
+ * 2020, Hamid Quddus Akhtar.
+ *
+ * Copyright (c) 2020, Highgo Software Inc.
+ *
+ * IDENTIFICATION
+ *    sql/import_schema.sql
+ *
+ *-------------------------------------------------------------------------
+ */
+\set orc_sample_dir     `echo ${ORC_FDW_DIR}/sample/data`
+/* Create extension */
+CREATE EXTENSION orc_fdw;
+/* Create server */
+CREATE SERVER orc_srv FOREIGN DATA WRAPPER orc_fdw;
+/* Import all files with .orc extension */
+IMPORT
+FOREIGN SCHEMA :"orc_sample_dir"
+FROM    SERVER orc_srv
+INTO    public;
+INFO:  ORC file myfile.orc found for schema import.
+INFO:  ORC file decimal.orc found for schema import.
+INFO:  ORC file orc_file_11_format.orc found for schema import.
+WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orctest/sample/data/orc_file_11_format.orc version 0.11.
+HINT:  This may still work, but it's strongly recommended to use files that are supported by the fdw.
+INFO:  Schema read successfully from 3 orc files.
+/* Let's check the imported tables */
+\dE
+                  List of relations
+ Schema |        Name        |     Type      | Owner  
+--------+--------------------+---------------+--------
+ public | decimal            | foreign table | highgo
+ public | myfile             | foreign table | highgo
+ public | orc_file_11_format | foreign table | highgo
+(3 rows)
+
+\dS decimal
+                    Foreign table "public.decimal"
+ Column |     Type      | Collation | Nullable | Default | FDW options 
+--------+---------------+-----------+----------+---------+-------------
+ _col0  | numeric(10,5) |           |          |         | 
+Server: orc_srv
+FDW options: (filename '/sources/PG/work/orctest/sample/data/decimal.orc')
+
+\dS myfile
+                  Foreign table "public.myfile"
+ Column |  Type   | Collation | Nullable | Default | FDW options 
+--------+---------+-----------+----------+---------+-------------
+ x      | integer |           |          |         | 
+ y      | integer |           |          |         | 
+Server: orc_srv
+FDW options: (filename '/sources/PG/work/orctest/sample/data/myfile.orc')
+
+\dS orc_file_11_format
+                       Foreign table "public.orc_file_11_format"
+  Column  |            Type             | Collation | Nullable | Default | FDW options 
+----------+-----------------------------+-----------+----------+---------+-------------
+ boolean1 | boolean                     |           |          |         | 
+ byte1    | smallint                    |           |          |         | 
+ short1   | smallint                    |           |          |         | 
+ int1     | integer                     |           |          |         | 
+ long1    | bigint                      |           |          |         | 
+ float1   | real                        |           |          |         | 
+ double1  | double precision            |           |          |         | 
+ bytes1   | bytea                       |           |          |         | 
+ string1  | text                        |           |          |         | 
+ ts       | timestamp without time zone |           |          |         | 
+ decimal1 | numeric                     |           |          |         | 
+Server: orc_srv
+FDW options: (filename '/sources/PG/work/orctest/sample/data/orc_file_11_format.orc')
+
+SELECT  *
+FROM    myfile
+LIMIT   1;
+ x | y 
+---+---
+ 0 | 0
+(1 row)
+
+SELECT  *
+FROM    decimal
+LIMIT   1;
+    _col0    
+-------------
+ -1000.50000
+(1 row)
+
+SELECT  boolean1
+        , byte1
+        , short1
+        , int1
+        , long1
+        , float1
+        , double1
+        -- , bytes1
+        -- , string1
+        , ts
+        , decimal1 
+FROM    orc_file_11_format
+LIMIT   1;
+WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orctest/sample/data/orc_file_11_format.orc version 0.11.
+HINT:  This may still work, but it's strongly recommended to use files that are supported by the fdw.
+ boolean1 | byte1 | short1 | int1  |        long1        | float1 | double1 |            ts            | decimal1 
+----------+-------+--------+-------+---------------------+--------+---------+--------------------------+----------
+ f        |     1 |   1024 | 65536 | 9223372036854775807 |      1 |     -15 | Sun Mar 12 15:00:00 2000 | 0.000000
+(1 row)
+
+/* Let's drop a table and retry importing a subset this time */
+DROP FOREIGN TABLE myfile;
+\dE
+                  List of relations
+ Schema |        Name        |     Type      | Owner  
+--------+--------------------+---------------+--------
+ public | decimal            | foreign table | highgo
+ public | orc_file_11_format | foreign table | highgo
+(2 rows)
+
+IMPORT
+FOREIGN SCHEMA :"orc_sample_dir"
+LIMIT   TO (myfile)
+FROM    SERVER orc_srv
+INTO    public;
+INFO:  ORC file myfile.orc found for schema import.
+INFO:  Schema read successfully from 1 orc files.
+\dE
+                  List of relations
+ Schema |        Name        |     Type      | Owner  
+--------+--------------------+---------------+--------
+ public | decimal            | foreign table | highgo
+ public | myfile             | foreign table | highgo
+ public | orc_file_11_format | foreign table | highgo
+(3 rows)
+
+/* Let's drop a table and retry importing a subset this time */
+DROP FOREIGN TABLE myfile;
+\dE
+                  List of relations
+ Schema |        Name        |     Type      | Owner  
+--------+--------------------+---------------+--------
+ public | decimal            | foreign table | highgo
+ public | orc_file_11_format | foreign table | highgo
+(2 rows)
+
+IMPORT
+FOREIGN SCHEMA :"orc_sample_dir"
+EXCEPT  (decimal, orc_file_11_format)
+FROM    SERVER orc_srv
+INTO    public;
+INFO:  ORC file myfile.orc found for schema import.
+INFO:  Schema read successfully from 1 orc files.
+\dE
+                  List of relations
+ Schema |        Name        |     Type      | Owner  
+--------+--------------------+---------------+--------
+ public | decimal            | foreign table | highgo
+ public | myfile             | foreign table | highgo
+ public | orc_file_11_format | foreign table | highgo
+(3 rows)
+
+/* Cleanup */
+DROP EXTENSION orc_fdw CASCADE;
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to server orc_srv
+drop cascades to foreign table "decimal"
+drop cascades to foreign table orc_file_11_format
+drop cascades to foreign table myfile

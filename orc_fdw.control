@@ -1,0 +1,5 @@
+# orc_fdw extension
+comment = 'foreign data wrapper for Apache ORC'
+default_version = '1.0.0'
+module_pathname = '$libdir/orc_fdw'
+relocatable = true

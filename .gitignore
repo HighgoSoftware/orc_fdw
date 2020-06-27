@@ -1,0 +1,6 @@
+# Ignore all tar.gz files
+*.tar.gz
+
+# Ignore workspace files
+*.code-workspace
+
