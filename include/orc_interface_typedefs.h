@@ -67,6 +67,7 @@ typedef enum OrcPgTypeKind
  * - max_length
  * - precision
  * - scale
+ * - has NULLs?
  */
 struct OrcFileColInfo
 {
@@ -76,6 +77,7 @@ struct OrcFileColInfo
     int64_t max_length;
     int precision;
     int scale;
+    bool hasNull;
 };
 
 /* Column information for supported columns in ORC file:
@@ -97,6 +99,7 @@ struct OrcFdwColInfo
     Oid col_atttypid;
     size_t size;
     int64_t max_length;
+    bool hasNull;
 
     /* Decimal attributes */
     int precision;

@@ -75,7 +75,7 @@ SERVER orc_srv OPTIONS
 SELECT  *
 FROM    orc11
 LIMIT   5;
-WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orctest/sample/data/orc_file_11_format.orc version 0.11.
+WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orc_fdw_github/sample/data/orc_file_11_format.orc version 0.11.
 HINT:  This may still work, but it's strongly recommended to use files that are supported by the fdw.
  boolean1 | y | z 
 ----------+---+---

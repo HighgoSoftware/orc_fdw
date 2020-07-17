@@ -29,7 +29,7 @@ INTO    public;
 INFO:  ORC file myfile.orc found for schema import.
 INFO:  ORC file decimal.orc found for schema import.
 INFO:  ORC file orc_file_11_format.orc found for schema import.
-WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orctest/sample/data/orc_file_11_format.orc version 0.11.
+WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orc_fdw_github/sample/data/orc_file_11_format.orc version 0.11.
 HINT:  This may still work, but it's strongly recommended to use files that are supported by the fdw.
 INFO:  Schema read successfully from 3 orc files.
 /* Let's check the imported tables */
@@ -46,36 +46,36 @@ INFO:  Schema read successfully from 3 orc files.
                     Foreign table "public.decimal"
  Column |     Type      | Collation | Nullable | Default | FDW options 
 --------+---------------+-----------+----------+---------+-------------
- _col0  | numeric(10,5) |           |          |         | 
+ _col0  | numeric(10,5) |           | not null |         | 
 Server: orc_srv
-FDW options: (filename '/sources/PG/work/orctest/sample/data/decimal.orc')
+FDW options: (filename '/sources/PG/work/orc_fdw_github/sample/data/decimal.orc')
 
 \dS myfile
                   Foreign table "public.myfile"
  Column |  Type   | Collation | Nullable | Default | FDW options 
 --------+---------+-----------+----------+---------+-------------
- x      | integer |           |          |         | 
- y      | integer |           |          |         | 
+ x      | integer |           | not null |         | 
+ y      | integer |           | not null |         | 
 Server: orc_srv
-FDW options: (filename '/sources/PG/work/orctest/sample/data/myfile.orc')
+FDW options: (filename '/sources/PG/work/orc_fdw_github/sample/data/myfile.orc')
 
 \dS orc_file_11_format
                        Foreign table "public.orc_file_11_format"
   Column  |            Type             | Collation | Nullable | Default | FDW options 
 ----------+-----------------------------+-----------+----------+---------+-------------
- boolean1 | boolean                     |           |          |         | 
- byte1    | smallint                    |           |          |         | 
- short1   | smallint                    |           |          |         | 
- int1     | integer                     |           |          |         | 
- long1    | bigint                      |           |          |         | 
- float1   | real                        |           |          |         | 
- double1  | double precision            |           |          |         | 
- bytes1   | bytea                       |           |          |         | 
- string1  | text                        |           |          |         | 
- ts       | timestamp without time zone |           |          |         | 
- decimal1 | numeric                     |           |          |         | 
+ boolean1 | boolean                     |           | not null |         | 
+ byte1    | smallint                    |           | not null |         | 
+ short1   | smallint                    |           | not null |         | 
+ int1     | integer                     |           | not null |         | 
+ long1    | bigint                      |           | not null |         | 
+ float1   | real                        |           | not null |         | 
+ double1  | double precision            |           | not null |         | 
+ bytes1   | bytea                       |           | not null |         | 
+ string1  | text                        |           | not null |         | 
+ ts       | timestamp without time zone |           | not null |         | 
+ decimal1 | numeric                     |           | not null |         | 
 Server: orc_srv
-FDW options: (filename '/sources/PG/work/orctest/sample/data/orc_file_11_format.orc')
+FDW options: (filename '/sources/PG/work/orc_fdw_github/sample/data/orc_file_11_format.orc')
 
 SELECT  *
 FROM    myfile
@@ -106,7 +106,7 @@ SELECT  boolean1
         , decimal1 
 FROM    orc_file_11_format
 LIMIT   1;
-WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orctest/sample/data/orc_file_11_format.orc version 0.11.
+WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orc_fdw_github/sample/data/orc_file_11_format.orc version 0.11.
 HINT:  This may still work, but it's strongly recommended to use files that are supported by the fdw.
  boolean1 | byte1 | short1 | int1  |        long1        | float1 | double1 |            ts            | decimal1 
 ----------+-------+--------+-------+---------------------+--------+---------+--------------------------+----------

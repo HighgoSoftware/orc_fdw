@@ -29,7 +29,7 @@ INTO    public;
 INFO:  ORC file myfile.orc found for schema import.
 INFO:  ORC file decimal.orc found for schema import.
 INFO:  ORC file orc_file_11_format.orc found for schema import.
-WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orctest/sample/data/orc_file_11_format.orc version 0.11.
+WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orc_fdw_github/sample/data/orc_file_11_format.orc version 0.11.
 HINT:  This may still work, but it's strongly recommended to use files that are supported by the fdw.
 INFO:  Schema read successfully from 3 orc files.
 /* myfile - Let's try select in different ways */
@@ -111,7 +111,7 @@ SELECT  boolean1
         , '2000-03-14 16:10:05'::timestamp without time zone - ts AS diff_ts
 FROM    orc_file_11_format
 LIMIT   2;
-WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orctest/sample/data/orc_file_11_format.orc version 0.11.
+WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orc_fdw_github/sample/data/orc_file_11_format.orc version 0.11.
 HINT:  This may still work, but it's strongly recommended to use files that are supported by the fdw.
  boolean1 | case | byte1 | short1 | short1_mod5 | int1  | int1_x2 |        long1        |     long1_half      | float1 | float1_less | double1 | double1_add |    bytes1    | string1 |  concat_string1  |            ts            |    decimal1     |            diff_ts             
 ----------+------+-------+--------+-------------+-------+---------+---------------------+---------------------+--------+-------------+---------+-------------+--------------+---------+------------------+--------------------------+-----------------+--------------------------------

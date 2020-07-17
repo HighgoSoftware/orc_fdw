@@ -33,7 +33,7 @@ bool orcCreateRowReader(ORC_UNIQUE_PTR<orc::Reader> *p_reader,
 
 
 std::vector<OrcFileColInfo> orcGetColsInfo(std::string file_pathname, ORC_UNIQUE_PTR<orc::Reader> *p_reader, orc::StructVectorBatch **p_root);
-std::vector<OrcFileColInfo> orcGetColsInfo(ORC_UNIQUE_PTR<orc::RowReader> *p_rowReader, orc::StructVectorBatch *root);
+std::vector<OrcFileColInfo> orcGetColsInfo(ORC_UNIQUE_PTR<orc::Reader> *p_reader, ORC_UNIQUE_PTR<orc::RowReader> *p_rowReader, orc::StructVectorBatch *root);
 uint64_t orcGetNumberOfRows(ORC_UNIQUE_PTR<orc::Reader> *p_reader);
 int orcGetDefaultDecimalScale(ORC_UNIQUE_PTR<orc::Reader> *p_reader);
 

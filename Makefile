@@ -1,3 +1,22 @@
+#-------------------------------------------------------------------------
+#
+# Makefile
+#    Mailefile for building ORC FDW
+#
+# 2020, Hamid Quddus Akhtar.
+#
+#    This file uses pg_config/pgxs to build ORC FDW.
+#
+#    Running REGRESSION: 
+#    - Set "ORC_FDW_DIR" to ORC FDW source folder
+#
+# Copyright (c) 2020, Highgo Software Inc.
+#
+# IDENTIFICATION
+#    Makefile
+#
+#-------------------------------------------------------------------------
+
 MODULE_big = orc_fdw
 PGFILEDESC = "orc_fdw - foreign data wrapper for Apache ORC"
 
@@ -6,7 +25,7 @@ FDW_SRC_DIR := ${CURDIR}
 
 EXTENSION = orc_fdw
 OBJS = src/orc_interface.o src/orc_wrapper.o src/orc_fdw.o
-DATA = orc_fdw--1.0.sql
+DATA = orc_fdw--1.0.0.sql
 REGRESS = create_table import_schema misc select
 EXTRA_CLEAN = src/*.gcda src/*.gcno
 

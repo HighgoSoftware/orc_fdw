@@ -131,7 +131,7 @@ orcGetColsInfo(std::string file_pathname, ORC_UNIQUE_PTR<orc::Reader> *p_reader,
     }
 
     /* Return column information std::tuple */
-    return orcGetColsInfo(&rowReader, *p_root);
+    return orcGetColsInfo(p_reader, &rowReader, *p_root);
 }
 
 /*
@@ -139,15 +139,17 @@ orcGetColsInfo(std::string file_pathname, ORC_UNIQUE_PTR<orc::Reader> *p_reader,
  *    Fills and returns a vector of tuples with column meta data.
  */
 std::vector<OrcFileColInfo>
-orcGetColsInfo(ORC_UNIQUE_PTR<orc::RowReader> *p_rowReader, orc::StructVectorBatch *root)
+orcGetColsInfo(ORC_UNIQUE_PTR<orc::Reader> *p_reader, ORC_UNIQUE_PTR<orc::RowReader> *p_rowReader, orc::StructVectorBatch *root)
 {
     std::vector<OrcFileColInfo> col_list;
 
     for (uint col_index = 0; col_index < (*p_rowReader)->getSelectedType().getSubtypeCount(); col_index++)
     {
         OrcFileColInfo col;
+        auto orc_col_id = (*p_rowReader)->getSelectedType().getSubtype(col_index)->getColumnId();
 
-        col.kind =(*p_rowReader)->getSelectedType().getSubtype(col_index)->getKind();
+        col.hasNull = (*p_reader)->getColumnStatistics(orc_col_id)->hasNull();
+        col.kind = (*p_rowReader)->getSelectedType().getSubtype(col_index)->getKind();
         col.max_length = (*p_rowReader)->getSelectedType().getSubtype(col_index)->getMaximumLength();
         col.precision = (*p_rowReader)->getSelectedType().getSubtype(col_index)->getPrecision();
         col.scale = (*p_rowReader)->getSelectedType().getSubtype(col_index)->getScale();

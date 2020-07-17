@@ -56,7 +56,7 @@ extern "C"
 
 /* Declare the functions to use within this file */
 static std::vector<OrcFdwColInfo> getMappedColsFromFile(std::string file_pathname);
-static std::vector<OrcFdwColInfo> getMappedColsFromReader(ORC_UNIQUE_PTR<orc::RowReader> *p_rowReader, orc::StructVectorBatch *root);
+static std::vector<OrcFdwColInfo> getMappedColsFromReader(ORC_UNIQUE_PTR<orc::Reader> *p_reader, ORC_UNIQUE_PTR<orc::RowReader> *p_rowReader, orc::StructVectorBatch *root);
 static std::vector<OrcFdwColInfo> map2PGColsList(orc::StructVectorBatch *root, std::vector<OrcFileColInfo> orc_col_list);
 static bool getColMetaData(orc::StructVectorBatch *root, OrcFdwColInfo &col);
 static OrcPgTypeKind getColType(int orcKind);
@@ -90,9 +90,9 @@ getMappedColsFromFile(std::string file_pathname)
  */
 static
 std::vector<OrcFdwColInfo>
-getMappedColsFromReader(ORC_UNIQUE_PTR<orc::RowReader> *p_rowReader, orc::StructVectorBatch *root)
+getMappedColsFromReader(ORC_UNIQUE_PTR<orc::Reader> *p_reader, ORC_UNIQUE_PTR<orc::RowReader> *p_rowReader, orc::StructVectorBatch *root)
 {
-    auto orc_col_info = orcGetColsInfo(p_rowReader, root);
+    auto orc_col_info = orcGetColsInfo(p_reader, p_rowReader, root);
     return map2PGColsList(root, orc_col_info);
 }
 
@@ -122,10 +122,11 @@ map2PGColsList(orc::StructVectorBatch *root, std::vector<OrcFileColInfo> orc_col
         col.name = orc_col_list[col_index].name;
         col.index = orc_col_list[col_index].index;
         col.max_length = orc_col_list[col_index].max_length;
+        col.hasNull = orc_col_list[col_index].hasNull;
         col.precision = orc_col_list[col_index].precision;
         col.scale = orc_col_list[col_index].scale;
 
-        /* Fill in other values in the structure */
+        /* Fill in and adjust values in the structure */
         (void) getColMetaData(root, col);
 
         fdw_col_list.push_back(col);
@@ -164,7 +165,7 @@ static
 bool
 getColMetaData(orc::StructVectorBatch *root, OrcFdwColInfo &col)
 {
-    col.size = -1;
+    col.size = 0;
 
     /* Let's assume that no casting function is required. We'll set
      * these later if required. */
@@ -268,12 +269,6 @@ getColMetaData(orc::StructVectorBatch *root, OrcFdwColInfo &col)
             return false;
     }
 
-    /* Handle variable lengths */
-    if (col.size < 0 && root->hasVariableLength() )
-    {
-        /* Nothing to be done here ATM */
-    }
-
     return true;
 }
 
@@ -365,6 +360,19 @@ getSchemaSQL(ImportForeignSchemaStmt *stmt, const char *f, char **cmd)
         {
             cmd_ss << "(" << (*col).precision << ", " << (*col).scale << ")";
         }
+
+        if ((*col).max_length > 0)
+        {
+            cmd_ss << " (" << (*col).max_length << ")";
+        }
+
+        /* Set NULL-ability */
+        if ((*col).hasNull == false)
+        {
+            cmd_ss << " NOT";
+        }
+
+        cmd_ss << " NULL";
 
         hasColumns = true;
     }
@@ -616,7 +624,7 @@ orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_name, L
     (*fdw_estate)->batch_data = dynamic_cast<orc::StructVectorBatch *>((*fdw_estate)->batch.get());
 
     /* index, column name, internal type, Oid, column size */
-    (*fdw_estate)->cols_info = getMappedColsFromReader(&((*fdw_estate)->rowReader), (*fdw_estate)->batch_data);
+    (*fdw_estate)->cols_info = getMappedColsFromReader(&((*fdw_estate)->reader), &((*fdw_estate)->rowReader), (*fdw_estate)->batch_data);
 
     for(auto col = (*fdw_estate)->cols_info.begin(); col != (*fdw_estate)->cols_info.end(); col++)
     {
@@ -873,7 +881,7 @@ orcGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid)
     batch_data = dynamic_cast<orc::StructVectorBatch *>(batch.get());
 
     /* Let's get all the columns in the ORC file */
-    std::vector<OrcFdwColInfo> cols_info = getMappedColsFromReader(&rowReader, batch_data);
+    std::vector<OrcFdwColInfo> cols_info = getMappedColsFromReader(&reader, &rowReader, batch_data);
 
     fdw_private->col_orc_name = NIL;
     fdw_private->col_orc_oid = NIL;
