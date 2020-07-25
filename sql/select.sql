@@ -43,6 +43,9 @@ WHERE   x IN (3, 9, 390);
 SELECT  count(*)
 FROM    myfile;
 
+SELECT	SUM(x)
+FROM	myfile;
+
 SELECT  SUM(x)
         , y
 FROM    myfile

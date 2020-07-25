@@ -33,11 +33,13 @@ typedef struct OrcFdwExecState OrcFdwExecState;
 /* FDW function */
 void orcGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid);
 void orcGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid);
+void orcGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage, RelOptInfo *input_rel, RelOptInfo *output_rel, void *extra);
 
 ForeignScan *orcGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel, 
                 Oid foreigntableid, ForeignPath *best_path, 
                 List *tlist, List *scan_clauses, Plan *outer_plan);
 
+bool orcRecheckForeignScan(ForeignScanState *node, TupleTableSlot *slot);
 void orcExplainForeignScan(ForeignScanState *node, ExplainState *es);
 
 void orcBeginForeignScan(ForeignScanState *node, int eflags);

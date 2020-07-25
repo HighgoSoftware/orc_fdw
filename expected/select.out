@@ -62,6 +62,13 @@ FROM    myfile;
  10000
 (1 row)
 
+SELECT	SUM(x)
+FROM	myfile;
+   sum    
+----------
+ 49995000
+(1 row)
+
 SELECT  SUM(x)
         , y
 FROM    myfile

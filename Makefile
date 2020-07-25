@@ -24,7 +24,7 @@ PGFILEDESC = "orc_fdw - foreign data wrapper for Apache ORC"
 FDW_SRC_DIR := ${CURDIR}
 
 EXTENSION = orc_fdw
-OBJS = src/orc_interface.o src/orc_wrapper.o src/orc_fdw.o
+OBJS = src/orc_interface.o src/orc_deparse.o src/orc_wrapper.o src/orc_fdw.o
 DATA = orc_fdw--1.0.0.sql
 REGRESS = create_table import_schema misc select
 EXTRA_CLEAN = src/*.gcda src/*.gcno

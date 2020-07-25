@@ -121,10 +121,14 @@ struct OrcFdwPlanState
     ForeignTable *table;
     uint64_t rows;
 
+    List *remote_conds;
+    List *local_conds;
+
     List *col_orc_name;
     List *col_orc_oid;
     List *col_orc_file_index;
 
+    bool hasAggregate;
     char *filename;
 };
 

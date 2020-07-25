@@ -143,7 +143,8 @@ orcGetColsInfo(ORC_UNIQUE_PTR<orc::Reader> *p_reader, ORC_UNIQUE_PTR<orc::RowRea
 {
     std::vector<OrcFileColInfo> col_list;
 
-    for (uint col_index = 0; col_index < (*p_rowReader)->getSelectedType().getSubtypeCount(); col_index++)
+    // for (uint col_index = 0; col_index < (*p_rowReader)->getSelectedType().getSubtypeCount(); col_index++)
+    for (uint col_index = 0; col_index < root->fields.size(); col_index++)
     {
         OrcFileColInfo col;
         auto orc_col_id = (*p_rowReader)->getSelectedType().getSubtype(col_index)->getColumnId();

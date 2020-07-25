@@ -27,6 +27,7 @@
 /* ORC FDW header files */
 #include <orc_wrapper.h>
 #include <orc_interface.h>
+#include <orc_deparse.h>
 #include <orc_interface_typedefs.h>
 
 /* PostgreSQL header files */
@@ -38,6 +39,7 @@ extern "C"
     #include "catalog/pg_type.h"
     #include "commands/defrem.h"
     #include "commands/explain.h"
+    #include "optimizer/cost.h"
     #include "optimizer/optimizer.h"
     #include "optimizer/pathnode.h"
     #include "optimizer/planmain.h"
@@ -45,6 +47,7 @@ extern "C"
     #include "parser/parse_coerce.h"
     #include "utils/builtins.h"
     #include "utils/date.h"
+    #include "utils/lsyscache.h"
     #include "utils/memutils.h"
     #include "utils/numeric.h"
     #include "utils/palloc.h"
@@ -63,7 +66,7 @@ static OrcPgTypeKind getColType(int orcKind);
 static void setCastingFunc(OrcFdwColInfo &col, Oid targetOid);
 static bool getColumnNameList(RelOptInfo *baserel, OrcFdwPlanState *fdw_state, List *tlist);
 static Datum getDatumForData(OrcFdwExecState *fdw_estate, int row_in_batch, int orc_index);
-static bool orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_name, List *col_oid, List *col_orc_file_index, MemoryContext cxt, TupleDesc tupleDesc);
+static OrcFdwExecState* orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_orc_file_index, RangeTblEntry *rte, List *fdw_scan_tlist, bool blnShouldSetRowReader);
 static TupleTableSlot *fillSlot(OrcFdwExecState *fdw_estate, TupleTableSlot *slot);
 
 
@@ -585,10 +588,10 @@ getColumnNameList(RelOptInfo *baserel, OrcFdwPlanState *fdw_state, List *tlist)
  *    column meta data.
  */
 static
-bool
-orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_name, List *col_oid, List *col_orc_file_index, MemoryContext cxt, TupleDesc tupleDesc)
+OrcFdwExecState *
+orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_orc_file_index, RangeTblEntry *rte, List *fdw_scan_tlist, bool blnShouldSetRowReader)
 {
-    int attnum;
+    int attnum = 0;
     uint i;
     ListCell *lc;
     std::list<uint64_t> orc_cols;
@@ -597,8 +600,8 @@ orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_name, L
 
     /* Set values in exec state for our FDW */
     (*fdw_estate)->filename = filename;
-    (*fdw_estate)->estate_cxt = cxt;
-    (*fdw_estate)->tupleDesc = tupleDesc;
+    // (*fdw_estate)->estate_cxt = cxt;
+    // (*fdw_estate)->tupleDesc = tupleDesc;
     (*fdw_estate)->batchsize = ORC_DEFAULT_BATCH_SIZE;
     (*fdw_estate)->curr_batch_total_rows = -1;
     (*fdw_estate)->curr_batch_number = 0;
@@ -612,7 +615,7 @@ orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_name, L
     }
 
     /* Include the list in the row reader */
-    if (orc_cols.size() > 0)
+    if (orc_cols.size() > 0 && blnShouldSetRowReader)
     {
         (*fdw_estate)->rowReaderOptions.include(orc_cols);
     }
@@ -626,23 +629,22 @@ orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_name, L
     /* index, column name, internal type, Oid, column size */
     (*fdw_estate)->cols_info = getMappedColsFromReader(&((*fdw_estate)->reader), &((*fdw_estate)->rowReader), (*fdw_estate)->batch_data);
 
-    for(auto col = (*fdw_estate)->cols_info.begin(); col != (*fdw_estate)->cols_info.end(); col++)
-    {
-        ListCell *lc_name;
-        ListCell *lc_index;
-
-        forboth(lc_name, col_name, lc_index, col_orc_file_index)
-        {
-            if ((*col).name.compare(strVal(lfirst(lc_name))) == 0)
-                (*col).index = lfirst_int(lc_index);
-        }
-    }
+    /* Resize the column position list to match tuple */
+    (*fdw_estate)->attr_orc_index.resize(list_length(fdw_scan_tlist));
 
     /* Store indexes of matching columns in ORC file */
-    for (attnum = 0; attnum < tupleDesc->natts; attnum++)
+    foreach(lc, fdw_scan_tlist)
     {
-        char *attname = NameStr(TupleDescAttr(tupleDesc, attnum)->attname);
-        Oid targetOid = TupleDescAttr(tupleDesc, attnum)->atttypid;
+        TargetEntry *tle = lfirst_node(TargetEntry, lc);
+        Var *var = (Var *) tle->expr;
+
+        Assert(IsA(var, Var));
+
+        char *attname = get_attname(rte->relid, var->varattno, false);
+        Oid targetOid = get_atttype(rte->relid, var->varattno);
+
+        /* Let's assume that we will not able to find the column */
+        (*fdw_estate)->attr_orc_index[attnum] = -1;
 
         for (i = 0; i < (*fdw_estate)->cols_info.size(); i++)
         {
@@ -654,9 +656,25 @@ orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_name, L
                     ereport(ERROR, (errmsg("%s: Unable to read data for column %s with data type mismatch against ORC file.", ORC_FDW_NAME, attname)));
                 }
 
-                (*fdw_estate)->attr_orc_index.push_back(attnum);
+                (*fdw_estate)->attr_orc_index[attnum] = i;
                 setCastingFunc((*fdw_estate)->cols_info[i], targetOid);
+                // printf("column added index = %d; attnum = %d; i = %d - %s\n", (*fdw_estate)->attr_orc_index[attnum], attnum, i, attname);
             }
+        }
+
+        /* Increase the attribute counter */
+        attnum++;
+    }
+
+    /* No columns found, so let's set to entire row */
+    if ((*fdw_estate)->attr_orc_index.size() == 0)
+    {
+        (*fdw_estate)->attr_orc_index.resize((*fdw_estate)->cols_info.size());
+
+        /* Set the column positions to default */
+        for (i = 0; i < (*fdw_estate)->attr_orc_index.size(); i++)
+        {
+            (*fdw_estate)->attr_orc_index[i] = i;
         }
     }
 
@@ -666,7 +684,7 @@ orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_name, L
     /* Set numeric defaults */
     (*fdw_estate)->default_numeric_scale = orcGetDefaultDecimalScale(&((*fdw_estate)->reader));
 
-    return true;
+    return *fdw_estate;
 }
 
 /*
@@ -824,20 +842,16 @@ fillSlot(OrcFdwExecState *fdw_estate, TupleTableSlot *slot)
     /* Iterate over all attributes and fill in data */
     for (attnum = 0; attnum < slot->tts_tupleDescriptor->natts; attnum++)
     {
-        /* Find the column in ORC columns */
-        std::vector<int>::iterator it = std::find(fdw_estate->attr_orc_index.begin(), fdw_estate->attr_orc_index.end(), attnum);
+        int col_index = fdw_estate->attr_orc_index[attnum];
 
-        /* Found the current column in the ORC file; set data */
-        if (it != fdw_estate->attr_orc_index.end())
+        /* Column is in the ORC file */
+        if (col_index >= 0)
         {
-            int col_index = it - fdw_estate->attr_orc_index.begin();
             Datum d = getDatumForData(fdw_estate, fdw_estate->curr_batch_row_num, col_index);
 
             slot->tts_values[attnum] = d;
             slot->tts_isnull[attnum] = false;
         }
-        /* If the column is not found, let's set it to NULL. Possibly a
-         * column that matches but type doesn't. */
         else
         {
             slot->tts_isnull[attnum] = true;
@@ -883,10 +897,15 @@ orcGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid)
     /* Let's get all the columns in the ORC file */
     std::vector<OrcFdwColInfo> cols_info = getMappedColsFromReader(&reader, &rowReader, batch_data);
 
+    /* Assume that we aren't dealing with aggregates */
+    fdw_private->hasAggregate = false;
+
+    /* Initialize lists to NIL */
     fdw_private->col_orc_name = NIL;
     fdw_private->col_orc_oid = NIL;
     fdw_private->col_orc_file_index = NIL;
 
+    /* Fill data in lists */
     for (auto col = cols_info.begin(); col != cols_info.end(); col++)
     {
         char *name;
@@ -899,6 +918,10 @@ orcGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid)
 
     /* Set total number of rows in the ORC file */
     baserel->rows = fdw_private->rows = orcGetNumberOfRows(&reader);
+
+    /* Classify */
+    classifyConditions(root, baserel, baserel->baserestrictinfo,
+                    &fdw_private->remote_conds, &fdw_private->local_conds);
 
     /* Set default costs */
     fdw_private->startup_cost = ORC_DEFAULT_FDW_STARTUP_COST;
@@ -937,6 +960,18 @@ orcGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid)
 }
 
 /*
+ * orcGetForeignUpperPaths
+ *    ORC FDW function set in orc_fdw.c
+ */
+extern "C"
+void
+orcGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage, RelOptInfo *input_rel, RelOptInfo *output_rel, void *extra)
+{
+	if (stage == UPPERREL_GROUP_AGG && input_rel->fdw_private)
+        ((OrcFdwPlanState *)input_rel->fdw_private)->hasAggregate = true;
+}
+
+/*
  * orcGetForeignPlan
  *    ORC FDW function set in orc_fdw.c
  */
@@ -950,29 +985,47 @@ orcGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,
     Index scan_relid = baserel->relid;
     OrcFdwPlanState *fdw_state = (OrcFdwPlanState *)(best_path->fdw_private);
     List *fdw_private;
+    bool blnShouldSetRowReader = (fdw_state->hasAggregate == false);
 
     scan_clauses = extract_actual_clauses(scan_clauses, false);
 
     /* Set column details in a list to be used in the execution state */
     (void) getColumnNameList(baserel, fdw_state, tlist);
-    fdw_private = list_make4(makeString(fdw_state->filename),
-                                fdw_state->col_orc_name,
-                                fdw_state->col_orc_oid,
-                                fdw_state->col_orc_file_index);
+    fdw_private = list_make3(makeString(fdw_state->filename),
+                                fdw_state->col_orc_file_index,
+                                makeInteger(blnShouldSetRowReader));
 
     /* We are not going to update the fdw_scan_tlist for the time being.
      * Scan tlist must also contain any columns required by the query.
      * So, currently, let's pass NIL and assume that the whole row must
      * be fetched. In private data, we have a column list to fetch from
      * from ORC. We'll use that to modify the reader. */
+	List *fdw_scan_tlist = NIL;
+
+    if (fdw_state->hasAggregate == false)
+    {
+        fdw_scan_tlist = build_tlist_to_deparse(baserel);
+    }
+
+    /*
+     * Now fix the subplan's tlist --- this might result in inserting
+     * a Result node atop the plan tree.
+     */
     return make_foreignscan(tlist, 
                     scan_clauses, 
                     scan_relid,
                     NIL, 
                     fdw_private,
-                    NIL, /* fdw_scan_tlist */
+                    fdw_scan_tlist,
                     NIL,
                     outer_plan);
+}
+
+extern "C"
+bool
+orcRecheckForeignScan(ForeignScanState *node, TupleTableSlot *slot)
+{
+    return true;
 }
 
 /*
@@ -1011,25 +1064,30 @@ extern "C"
 void
 orcBeginForeignScan(ForeignScanState *node, int eflags)
 {
-    List *col_name;
-    List *col_oid;
     List *col_orc_file_index;
     char *filename;
+    bool blnShouldSetRowReader = false;
+    int rtindex;
+	RangeTblEntry *rte;
     OrcFdwExecState *fdw_estate;
-    ForeignScan *plan = (ForeignScan *) node->ss.ps.plan;
+    ForeignScan *plan = castNode(ForeignScan, node->ss.ps.plan);
     List *fdw_private = plan->fdw_private;
-    MemoryContext cxt = node->ss.ps.state->es_query_cxt;
-    TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
-    TupleDesc tupleDesc = slot->tts_tupleDescriptor;
+    List *fdw_scan_tlist = plan->fdw_scan_tlist;
+    EState *estate = node->ss.ps.state;
+
+	if (plan->scan.scanrelid > 0)
+		rtindex = plan->scan.scanrelid;
+	else
+		rtindex = bms_next_member(plan->fs_relids, -1);
+
+	rte = exec_rt_fetch(rtindex, estate);
 
     filename = strVal((Value *) linitial(fdw_private));
-    col_name = (List *) lsecond(fdw_private);
-    col_oid = (List *) lthird(fdw_private);
-    col_orc_file_index = (List *) lfourth(fdw_private);
+    col_orc_file_index = (List *) lsecond(fdw_private);
+    blnShouldSetRowReader = (bool)intVal((Value *)lthird(fdw_private));
 
     /* Initialize and set execution state */
-    (void) orcInitExecState(&fdw_estate, filename, col_name, col_oid, col_orc_file_index, cxt, tupleDesc);
-    node->fdw_state = fdw_estate;
+    node->fdw_state = orcInitExecState(&fdw_estate, filename, col_orc_file_index, rte, fdw_scan_tlist, blnShouldSetRowReader);
 }
 
 /*

@@ -86,6 +86,7 @@ orc_fdw_handler(PG_FUNCTION_ARGS)
     /* Implemented functions */
     fdwroutine->GetForeignRelSize = orcGetForeignRelSize;
     fdwroutine->GetForeignPaths = orcGetForeignPaths;
+    fdwroutine->GetForeignUpperPaths = orcGetForeignUpperPaths;
     fdwroutine->GetForeignPlan = orcGetForeignPlan;
     fdwroutine->BeginForeignScan = orcBeginForeignScan;
     fdwroutine->IterateForeignScan = orcIterateForeignScan;
@@ -110,6 +111,8 @@ orc_fdw_handler(PG_FUNCTION_ARGS)
 	fdwroutine->ExplainForeignModify = orcExplainForeignModify;
 
 	fdwroutine->GetForeignJoinPaths = orcGetForeignJoinPaths;
+
+    fdwroutine->RecheckForeignScan = orcRecheckForeignScan;
 
     PG_RETURN_POINTER(fdwroutine);
 }
