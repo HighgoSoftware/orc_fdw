@@ -144,9 +144,6 @@ struct OrcFdwExecState
 
     orc::StructVectorBatch *batch_data;
 
-    MemoryContext estate_cxt;
-    TupleDesc tupleDesc;
-
     bool is_valid_reader;
 
     /* Index of column in the ORC file */

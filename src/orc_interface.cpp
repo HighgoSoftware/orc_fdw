@@ -600,8 +600,6 @@ orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_orc_fil
 
     /* Set values in exec state for our FDW */
     (*fdw_estate)->filename = filename;
-    // (*fdw_estate)->estate_cxt = cxt;
-    // (*fdw_estate)->tupleDesc = tupleDesc;
     (*fdw_estate)->batchsize = ORC_DEFAULT_BATCH_SIZE;
     (*fdw_estate)->curr_batch_total_rows = -1;
     (*fdw_estate)->curr_batch_number = 0;
@@ -620,7 +618,7 @@ orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_orc_fil
         (*fdw_estate)->rowReaderOptions.include(orc_cols);
     }
 
-    (void) orcCreateReader((*fdw_estate)->filename, &((*fdw_estate)->reader), (*fdw_estate)->options, false);
+    (*fdw_estate)->is_valid_reader = orcCreateReader((*fdw_estate)->filename, &((*fdw_estate)->reader), (*fdw_estate)->options, false);
     (void) orcCreateRowReader(&((*fdw_estate)->reader), &((*fdw_estate)->rowReader), (*fdw_estate)->rowReaderOptions);
 
 	(*fdw_estate)->batch = ((*fdw_estate)->rowReader)->createRowBatch((*fdw_estate)->batchsize);
@@ -1160,21 +1158,22 @@ extern "C"
 void
 orcEndForeignScan(ForeignScanState *node)
 {
-    // OrcFdwPlanState *fdw_private = (OrcFdwPlanState *)(node->fdw_state);
+    OrcFdwExecState *fdw_estate = (OrcFdwExecState *)(node->fdw_state);
 
-    // if (fdw_private && fdw_private->isValidReader)
-    // {
-    //     fdw_private->isValidReader = false;
+    if (fdw_estate != NULL)
+    {
+        if (fdw_estate->is_valid_reader)
+        {
+            if (fdw_estate->batch)
+                fdw_estate->batch.reset();
 
-    //     if (fdw_private->batch)
-    //         fdw_private->batch.reset();
+            if (fdw_estate->rowReader)
+                fdw_estate->rowReader.reset();
 
-    //     if (fdw_private->rowReader)
-    //         fdw_private->rowReader.reset();
+            if (fdw_estate->reader)
+                fdw_estate->reader.reset();
+        }
 
-    //     if (fdw_private->reader)
-    //         fdw_private->reader.reset();
-
-    //     pfree(fdw_private);
-    // }
+        delete fdw_estate;
+    }
 }
