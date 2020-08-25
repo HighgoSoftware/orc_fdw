@@ -68,6 +68,7 @@ static bool getColumnNameList(RelOptInfo *baserel, OrcFdwPlanState *fdw_state, L
 static Datum getDatumForData(OrcFdwExecState *fdw_estate, int row_in_batch, int orc_index);
 static OrcFdwExecState* orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_orc_file_index, RangeTblEntry *rte, List *fdw_scan_tlist, bool blnShouldSetRowReader);
 static TupleTableSlot *fillSlot(OrcFdwExecState *fdw_estate, TupleTableSlot *slot);
+static Datum shouldReturnTuple(OrcFdwExecState *fdw_estate, List *node, Node *exprNode);
 
 
 /*
@@ -1088,6 +1089,89 @@ orcBeginForeignScan(ForeignScanState *node, int eflags)
     node->fdw_state = orcInitExecState(&fdw_estate, filename, col_orc_file_index, rte, fdw_scan_tlist, blnShouldSetRowReader);
 }
 
+static
+Datum
+shouldReturnTuple(OrcFdwExecState *fdw_estate, List *node, Node *exprNode)
+{
+    ListCell *lc;
+    List *data = NIL;
+    Datum ret = BoolGetDatum(true);
+
+    if (node == NIL)
+    {
+        return ret;
+    }
+
+    foreach(lc, node)
+    {
+        Node *curNode = (Node *) lfirst(lc);
+
+        switch(nodeTag(curNode))
+        {
+            case T_Var:
+            {
+                Var *var = (Var *) curNode;
+                int col_index = fdw_estate->attr_orc_index[var->varattno - 1];
+                data = lappend(data, (void *) (getDatumForData(fdw_estate, fdw_estate->curr_batch_row_num, col_index)));
+                break;
+            }
+            case T_Const:
+            {
+                Const *value = (Const *) curNode;
+                data = lappend(data, (void *) (value->constvalue));
+                break;
+            }
+            case T_BoolExpr:
+            {
+                BoolExpr *expr = (BoolExpr *) curNode;
+                data = lappend(data, (void *) (shouldReturnTuple(fdw_estate, expr->args, curNode)));
+                break;
+            }
+            case T_OpExpr:
+            {
+                OpExpr *expr = (OpExpr *) curNode;
+                data = lappend(data, (void *) (shouldReturnTuple(fdw_estate, expr->args, curNode)));
+                break;
+            }
+
+            default:
+            {
+                /* If we can't decide here, let's leave it to the server to handle this case */
+                return BoolGetDatum(true);
+            }
+        }
+    }
+
+    if ((exprNode == NULL && data != NIL) || IsA(exprNode, BoolExpr))
+    {
+        /* If we have a valid BoolExpr, get boolop otherwise consider AND_EXPR */
+        BoolExprType boolop = (exprNode != NULL) ? ((BoolExpr *) exprNode)->boolop : AND_EXPR;
+        bool returnValue = DatumGetBool((Datum) linitial(data));
+
+        foreach(lc, data)
+        {
+            bool val = DatumGetBool((Datum) lfirst(lc));
+
+            if (boolop == AND_EXPR)
+                returnValue &= val;
+            else if (boolop == OR_EXPR)
+                returnValue |= val;
+            else
+                /* Should never come here */
+                Assert(false);
+        }
+
+        ret = BoolGetDatum(returnValue);
+    }
+    else if (IsA(exprNode, OpExpr))
+    {
+        OpExpr *expr = (OpExpr *) exprNode;
+        ret = OidFunctionCall2(expr->opfuncid, (Datum) linitial(data), (Datum) lsecond(data));
+    }
+
+    return ret;
+}
+
 /*
  * orcIterateForeignScan
  *    ORC FDW function set in orc_fdw.c
@@ -1098,36 +1182,35 @@ orcIterateForeignScan(ForeignScanState *node)
 {
     OrcFdwExecState *fdw_estate = (OrcFdwExecState *) node->fdw_state;
     TupleTableSlot *slot = node->ss.ss_ScanTupleSlot;
-    bool fetch_next_batch = false;
 
     ExecClearTuple(slot);
 
-    /* We've reached the end */
-    if (fdw_estate->row_num >= fdw_estate->total_rows)
+    while (fdw_estate->row_num < fdw_estate->total_rows)
     {
-        return slot;
+        /* Do we need to fetch the next batch? */
+        if (fdw_estate->curr_batch_total_rows == -1
+            || (fdw_estate->row_num % fdw_estate->batch->numElements) == 0)
+        {
+            /* If next fails, we've reached the end. */
+            if (! fdw_estate->rowReader->next(*(fdw_estate->batch)))
+                return slot;
+
+            fdw_estate->curr_batch_number++;
+            fdw_estate->curr_batch_row_num = 0;
+            fdw_estate->curr_batch_total_rows = fdw_estate->batch->numElements;
+        }
+
+        /* Found a tuple that we should return */
+        if (DatumGetBool(shouldReturnTuple(fdw_estate, node->ss.ps.plan->qual, NULL)) == true)
+        {
+            /* Store virtual tuple with details in slot */
+            ExecStoreVirtualTuple(fillSlot(fdw_estate, slot));
+            break;
+        }
+
+        fdw_estate->curr_batch_row_num++;
+        fdw_estate->row_num++;
     }
-
-    /* FIXME: batchsize instead */
-    if (fdw_estate->curr_batch_total_rows == -1
-        || (fdw_estate->row_num % fdw_estate->batch->numElements) == 0)
-    {
-        fetch_next_batch = true;
-    }
-
-    if (fetch_next_batch)
-    {
-        /* If next fails, we've reached the end. */
-        if (! fdw_estate->rowReader->next(*(fdw_estate->batch)))
-            return slot;
-
-        fdw_estate->curr_batch_number++;
-        fdw_estate->curr_batch_row_num = 0;
-        fdw_estate->curr_batch_total_rows = fdw_estate->batch->numElements;
-    }
-
-    /* Store virtual tuple with details in slot */
-    ExecStoreVirtualTuple(fillSlot(fdw_estate, slot));
 
     return slot;
 }
