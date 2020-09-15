@@ -1,0 +1,215 @@
+/*-------------------------------------------------------------------------
+ *
+ * select.sql
+ *    Test select statements
+ *
+ *    REQUIRES:
+ *      ORC_FDW_DIR variable to be set in the shell which is initiating
+ *      the regression.
+ *
+ * 2020, Hamid Quddus Akhtar.
+ *
+ * Copyright (c) 2020, Highgo Software Inc.
+ *
+ * IDENTIFICATION
+ *    sql/select.sql
+ *
+ *-------------------------------------------------------------------------
+ */
+\set orc_sample_dir     `echo ${ORC_FDW_DIR}/sample/data`
+/* Create extension */
+CREATE EXTENSION orc_fdw;
+/* Create server */
+CREATE SERVER orc_srv FOREIGN DATA WRAPPER orc_fdw;
+/* Import all files with .orc extension */
+IMPORT
+FOREIGN SCHEMA :"orc_sample_dir"
+FROM    SERVER orc_srv
+INTO    public;
+INFO:  ORC file myfile.orc found for schema import.
+INFO:  ORC file decimal.orc found for schema import.
+INFO:  ORC file orc_file_11_format.orc found for schema import.
+WARNING:  orc_fdw: Unsupported ORC file /sources/PG/work/orc_fdw_github/sample/data/orc_file_11_format.orc version 0.11.
+HINT:  This may still work, but it's strongly recommended to use files that are supported by the fdw.
+INFO:  Schema read successfully from 3 orc files.
+/* myfile - Let's try joins in different ways */
+SELECT  *
+FROM    myfile mf1 INNER JOIN myfile mf2
+        ON mf1.x = mf2.x
+LIMIT   5;
+ x | y  | x | y  
+---+----+---+----
+ 0 |  0 | 0 |  0
+ 1 |  3 | 1 |  3
+ 2 |  6 | 2 |  6
+ 3 |  9 | 3 |  9
+ 4 | 12 | 4 | 12
+(5 rows)
+
+SELECT  mf1.x
+        , mf2.y
+FROM    myfile mf1 INNER JOIN myfile mf2
+        ON mf1.x = mf2.y
+LIMIT   5;
+ x  | y  
+----+----
+  0 |  0
+  3 |  3
+  6 |  6
+  9 |  9
+ 12 | 12
+(5 rows)
+
+/* Cross join */
+SELECT  *
+FROM    myfile mf1, myfile mf2
+LIMIT   50;
+ x | y | x  |  y  
+---+---+----+-----
+ 0 | 0 |  0 |   0
+ 0 | 0 |  1 |   3
+ 0 | 0 |  2 |   6
+ 0 | 0 |  3 |   9
+ 0 | 0 |  4 |  12
+ 0 | 0 |  5 |  15
+ 0 | 0 |  6 |  18
+ 0 | 0 |  7 |  21
+ 0 | 0 |  8 |  24
+ 0 | 0 |  9 |  27
+ 0 | 0 | 10 |  30
+ 0 | 0 | 11 |  33
+ 0 | 0 | 12 |  36
+ 0 | 0 | 13 |  39
+ 0 | 0 | 14 |  42
+ 0 | 0 | 15 |  45
+ 0 | 0 | 16 |  48
+ 0 | 0 | 17 |  51
+ 0 | 0 | 18 |  54
+ 0 | 0 | 19 |  57
+ 0 | 0 | 20 |  60
+ 0 | 0 | 21 |  63
+ 0 | 0 | 22 |  66
+ 0 | 0 | 23 |  69
+ 0 | 0 | 24 |  72
+ 0 | 0 | 25 |  75
+ 0 | 0 | 26 |  78
+ 0 | 0 | 27 |  81
+ 0 | 0 | 28 |  84
+ 0 | 0 | 29 |  87
+ 0 | 0 | 30 |  90
+ 0 | 0 | 31 |  93
+ 0 | 0 | 32 |  96
+ 0 | 0 | 33 |  99
+ 0 | 0 | 34 | 102
+ 0 | 0 | 35 | 105
+ 0 | 0 | 36 | 108
+ 0 | 0 | 37 | 111
+ 0 | 0 | 38 | 114
+ 0 | 0 | 39 | 117
+ 0 | 0 | 40 | 120
+ 0 | 0 | 41 | 123
+ 0 | 0 | 42 | 126
+ 0 | 0 | 43 | 129
+ 0 | 0 | 44 | 132
+ 0 | 0 | 45 | 135
+ 0 | 0 | 46 | 138
+ 0 | 0 | 47 | 141
+ 0 | 0 | 48 | 144
+ 0 | 0 | 49 | 147
+(50 rows)
+
+/* Outer joins */
+SELECT	*
+FROM	myfile mf1 LEFT OUTER JOIN myfile mf2
+	ON mf1.x = mf2.x
+LIMIT	10;
+ x | y  | x | y  
+---+----+---+----
+ 0 |  0 | 0 |  0
+ 1 |  3 | 1 |  3
+ 2 |  6 | 2 |  6
+ 3 |  9 | 3 |  9
+ 4 | 12 | 4 | 12
+ 5 | 15 | 5 | 15
+ 6 | 18 | 6 | 18
+ 7 | 21 | 7 | 21
+ 8 | 24 | 8 | 24
+ 9 | 27 | 9 | 27
+(10 rows)
+
+/* Sub-query */
+SELECT  mf1.x
+        , mf1.y
+FROM    myfile mf1
+WHERE   mf1.x IN
+        (
+                SELECT  mf2.x
+                FROM    myfile mf2
+                WHERE   mf2.x < 10
+        )
+LIMIT   30;
+ x | y  
+---+----
+ 0 |  0
+ 1 |  3
+ 2 |  6
+ 3 |  9
+ 4 | 12
+ 5 | 15
+ 6 | 18
+ 7 | 21
+ 8 | 24
+ 9 | 27
+(10 rows)
+
+SELECT	mf1.x
+	, mf1.y
+FROM	myfile mf1
+WHERE	mf1.x IN
+	(
+		SELECT	mf2.x
+		FROM	myfile mf2
+		WHERE	mf2.x = mf1.x
+	)
+LIMIT	30;
+ x  | y  
+----+----
+  0 |  0
+  1 |  3
+  2 |  6
+  3 |  9
+  4 | 12
+  5 | 15
+  6 | 18
+  7 | 21
+  8 | 24
+  9 | 27
+ 10 | 30
+ 11 | 33
+ 12 | 36
+ 13 | 39
+ 14 | 42
+ 15 | 45
+ 16 | 48
+ 17 | 51
+ 18 | 54
+ 19 | 57
+ 20 | 60
+ 21 | 63
+ 22 | 66
+ 23 | 69
+ 24 | 72
+ 25 | 75
+ 26 | 78
+ 27 | 81
+ 28 | 84
+ 29 | 87
+(30 rows)
+
+/* Cleanup */
+DROP EXTENSION orc_fdw CASCADE;
+NOTICE:  drop cascades to 4 other objects
+DETAIL:  drop cascades to server orc_srv
+drop cascades to foreign table myfile
+drop cascades to foreign table "decimal"
+drop cascades to foreign table orc_file_11_format

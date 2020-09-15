@@ -61,7 +61,6 @@ TupleTableSlot *orcExecForeignDelete(EState *estate, ResultRelInfo *rinfo, Tuple
 void orcEndForiegnModify(EState *estate, ResultRelInfo *rinfo);
 void orcExplainForeignModify(ModifyTableState *mstate, ResultRelInfo *rinfo, List *fdw_private, int subplan_index, struct ExplainState *es);
 void orcEndForeignModify(EState *estate, ResultRelInfo *rinfo);
-void orcGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel, RelOptInfo *outerrel, RelOptInfo *innerrel, JoinType jointype, JoinPathExtraData *extra);
 
 /* FDW routines */
 
@@ -362,11 +361,4 @@ orcEndForeignModify(EState *estate, ResultRelInfo *rinfo)
 {
     /* Not supporting this at the moment */
     ereport(ERROR, (errmsg("%s: INSERT, UPDATE and DELETE %s", ORC_FDW_NAME, ORC_MSG_UNSUPPORTED)));
-}
-
-void
-orcGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel, RelOptInfo *outerrel, RelOptInfo *innerrel, JoinType jointype, JoinPathExtraData *extra)
-{
-    /* Not supporting this at the moment */
-    ereport(ERROR, (errmsg("%s: JOIN %s", ORC_FDW_NAME, ORC_MSG_UNSUPPORTED)));
 }

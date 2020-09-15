@@ -34,6 +34,7 @@ typedef struct OrcFdwExecState OrcFdwExecState;
 void orcGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid);
 void orcGetForeignPaths(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid);
 void orcGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage, RelOptInfo *input_rel, RelOptInfo *output_rel, void *extra);
+void orcGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel, RelOptInfo *outerrel, RelOptInfo *innerrel, JoinType jointype, JoinPathExtraData *extra);
 
 ForeignScan *orcGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel, 
                 Oid foreigntableid, ForeignPath *best_path, 

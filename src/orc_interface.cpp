@@ -65,10 +65,11 @@ static bool getColMetaData(orc::StructVectorBatch *root, OrcFdwColInfo &col);
 static OrcPgTypeKind getColType(int orcKind);
 static void setCastingFunc(OrcFdwColInfo &col, Oid targetOid);
 static bool getColumnNameList(RelOptInfo *baserel, OrcFdwPlanState *fdw_state, List *tlist);
-static Datum getDatumForData(OrcFdwExecState *fdw_estate, int row_in_batch, int orc_index);
+static Datum getDatumForData(OrcFdwExecState *fdw_estate, int row_in_batch, int orc_index, Oid targetOid);
 static OrcFdwExecState* orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_orc_file_index, RangeTblEntry *rte, List *fdw_scan_tlist, bool blnShouldSetRowReader);
 static TupleTableSlot *fillSlot(OrcFdwExecState *fdw_estate, TupleTableSlot *slot);
 static Datum shouldReturnTuple(OrcFdwExecState *fdw_estate, List *node, Node *exprNode);
+static void checkTypeMatch(Oid srcOid, Oid targetOid, const char *attname);
 
 
 /*
@@ -650,14 +651,10 @@ orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_orc_fil
             /* FIXME: Do we need a case insensitive comparison? */
             if ((*fdw_estate)->cols_info[i].name.compare(attname) == 0)
             {
-                if ((*fdw_estate)->cols_info[i].col_oid != targetOid)
-                {
-                    ereport(ERROR, (errmsg("%s: Unable to read data for column %s with data type mismatch against ORC file.", ORC_FDW_NAME, attname)));
-                }
+                checkTypeMatch((*fdw_estate)->cols_info[i].col_oid, targetOid, attname);
 
                 (*fdw_estate)->attr_orc_index[attnum] = i;
                 setCastingFunc((*fdw_estate)->cols_info[i], targetOid);
-                // printf("column added index = %d; attnum = %d; i = %d - %s\n", (*fdw_estate)->attr_orc_index[attnum], attnum, i, attname);
             }
         }
 
@@ -687,17 +684,37 @@ orcInitExecState(OrcFdwExecState **fdw_estate, char *filename, List *col_orc_fil
 }
 
 /*
+ * checkTypeMatch
+ *    Checks if the data type matches, if not, throw a fatal error.
+ *    Ignore if the either Oid is an InvalidOid.
+ */
+static
+void
+checkTypeMatch(Oid srcOid, Oid targetOid, const char *attname)
+{
+    if (srcOid == InvalidOid || targetOid == InvalidOid)
+        return;
+
+    if (srcOid != targetOid)
+    {
+        ereport(ERROR, (errmsg("%s: Unable to read data for column %s with data type mismatch against ORC file.", ORC_FDW_NAME, attname)));
+    }
+}
+
+/*
  * getDatumForData
  *    Get data for a given column and row from the ORC file, store it in a
  *    Datum based on column's OID, and return it.
  */
 static
 Datum
-getDatumForData(OrcFdwExecState *fdw_estate, int row_in_batch, int col_index)
+getDatumForData(OrcFdwExecState *fdw_estate, int row_in_batch, int col_index, Oid targetOid)
 {
     Datum d = (Datum) NULL;
     int orc_index = col_index;
     bool is_var_length = false;
+
+    checkTypeMatch(fdw_estate->cols_info[col_index].col_oid, targetOid, fdw_estate->cols_info[col_index].name.c_str());
 
     switch(fdw_estate->cols_info[col_index].col_oid)
     {
@@ -846,7 +863,7 @@ fillSlot(OrcFdwExecState *fdw_estate, TupleTableSlot *slot)
         /* Column is in the ORC file */
         if (col_index >= 0)
         {
-            Datum d = getDatumForData(fdw_estate, fdw_estate->curr_batch_row_num, col_index);
+            Datum d = getDatumForData(fdw_estate, fdw_estate->curr_batch_row_num, col_index, slot->tts_tupleDescriptor->attrs[attnum].atttypid);
 
             slot->tts_values[attnum] = d;
             slot->tts_isnull[attnum] = false;
@@ -898,7 +915,8 @@ orcGetForeignRelSize(PlannerInfo *root, RelOptInfo *baserel, Oid foreigntableid)
 
     /* Assume that we aren't dealing with aggregates */
     fdw_private->hasAggregate = false;
-
+    fdw_private->hasJoins = false;
+ 
     /* Initialize lists to NIL */
     fdw_private->col_orc_name = NIL;
     fdw_private->col_orc_oid = NIL;
@@ -971,6 +989,30 @@ orcGetForeignUpperPaths(PlannerInfo *root, UpperRelationKind stage, RelOptInfo *
 }
 
 /*
+ * orcGetForeignJoinPaths
+ *    We don't want to handling joins remotely, however we do want to set 
+ *    set a flag here to prevent target list pushdown from happening in
+ *    this case.
+ */
+extern "C"
+void
+orcGetForeignJoinPaths(PlannerInfo *root, RelOptInfo *joinrel, RelOptInfo *outerrel, RelOptInfo *innerrel, JoinType jointype, JoinPathExtraData *extra)
+{
+    OrcFdwPlanState *fdw_state = NULL;
+
+    if (outerrel->fdw_private)
+        fdw_state = (OrcFdwPlanState *)(outerrel->fdw_private);
+
+    if (innerrel->fdw_private)
+        fdw_state = (OrcFdwPlanState *)(innerrel->fdw_private);
+
+    if (fdw_state)
+    {
+        fdw_state->hasJoins = true;
+    }
+}
+
+/*
  * orcGetForeignPlan
  *    ORC FDW function set in orc_fdw.c
  */
@@ -984,7 +1026,7 @@ orcGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,
     Index scan_relid = baserel->relid;
     OrcFdwPlanState *fdw_state = (OrcFdwPlanState *)(best_path->fdw_private);
     List *fdw_private;
-    bool blnShouldSetRowReader = (fdw_state->hasAggregate == false);
+    bool blnShouldSetRowReader = (fdw_state->hasAggregate == false && fdw_state->hasJoins == false);
 
     scan_clauses = extract_actual_clauses(scan_clauses, false);
 
@@ -1001,7 +1043,7 @@ orcGetForeignPlan(PlannerInfo *root, RelOptInfo *baserel,
      * from ORC. We'll use that to modify the reader. */
 	List *fdw_scan_tlist = NIL;
 
-    if (fdw_state->hasAggregate == false)
+    if (blnShouldSetRowReader == true)
     {
         fdw_scan_tlist = build_tlist_to_deparse(baserel);
     }
@@ -1112,7 +1154,7 @@ shouldReturnTuple(OrcFdwExecState *fdw_estate, List *node, Node *exprNode)
             {
                 Var *var = (Var *) curNode;
                 int col_index = fdw_estate->attr_orc_index[var->varattno - 1];
-                data = lappend(data, (void *) (getDatumForData(fdw_estate, fdw_estate->curr_batch_row_num, col_index)));
+                data = lappend(data, (void *) (getDatumForData(fdw_estate, fdw_estate->curr_batch_row_num, col_index, InvalidOid)));
                 break;
             }
             case T_Const:
@@ -1195,6 +1237,7 @@ orcIterateForeignScan(ForeignScanState *node)
             if (! fdw_estate->rowReader->next(*(fdw_estate->batch)))
                 return slot;
 
+            fdw_estate->batch_data = dynamic_cast<orc::StructVectorBatch *>(fdw_estate->batch.get());
             fdw_estate->curr_batch_number++;
             fdw_estate->curr_batch_row_num = 0;
             fdw_estate->curr_batch_total_rows = fdw_estate->batch->numElements;
@@ -1226,7 +1269,9 @@ orcReScanForeignScan(ForeignScanState *node)
     OrcFdwExecState *fdw_estate = (OrcFdwExecState *)(node->fdw_state);
 
     /* Reset all counters and state variables */
+    fdw_estate->rowReader->seekToRow(0);
     fdw_estate->batch = fdw_estate->rowReader->createRowBatch(fdw_estate->batchsize);
+    fdw_estate->batch_data = dynamic_cast<orc::StructVectorBatch *>(fdw_estate->batch.get());
     fdw_estate->curr_batch_total_rows = -1;
     fdw_estate->curr_batch_number = 0;
     fdw_estate->curr_batch_row_num = 0;

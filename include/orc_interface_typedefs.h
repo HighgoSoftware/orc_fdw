@@ -129,6 +129,7 @@ struct OrcFdwPlanState
     List *col_orc_file_index;
 
     bool hasAggregate;
+    bool hasJoins;
     char *filename;
 };
 
