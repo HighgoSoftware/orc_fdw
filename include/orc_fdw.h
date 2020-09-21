@@ -22,10 +22,10 @@
 /* FDW name */
 #define ORC_FDW_NAME "orc_fdw"
 
-/* Internal version - 1.0.0 - xd major, 3d minor */
-#define ORC_FDW_VERSION  "Highgo ORC FDW - 1.0.0"
+/* Internal version - 1.1.0 - xd major, 3d minor */
+#define ORC_FDW_VERSION  "Highgo ORC FDW - 1.1.0"
 #define ORC_FDW_MAJOR_VERSION   1
-#define ORC_FDW_MINOR_VERSION   0000
+#define ORC_FDW_MINOR_VERSION   0100
 
 
 /* DEFAULT COSTS */

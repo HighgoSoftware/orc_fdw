@@ -25,7 +25,7 @@ FDW_SRC_DIR := ${CURDIR}
 
 EXTENSION = orc_fdw
 OBJS = src/orc_interface.o src/orc_deparse.o src/orc_wrapper.o src/orc_fdw.o
-DATA = orc_fdw--1.0.0.sql
+DATA = orc_fdw--1.1.0.sql orc_fdw--1.0.0--1.1.0.sql orc_fdw--1.0.0.sql
 REGRESS = create_table import_schema misc select joins
 EXTRA_CLEAN = src/*.gcda src/*.gcno
 

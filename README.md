@@ -93,8 +93,8 @@ select orc_fdw_version();
 
 ## Todo
 - [x] Read functionality for ORC files
-- [ ] Allow joins between ORC foreign tables
-- [ ] Complete pushdown functionality to optimize plan and reads
+- [x] Allow joins between ORC foreign tables
+- [x] Complete pushdown functionality to optimize plan and reads
 - [ ] Complete DML functionality to allow INSERT/UPDATE/DELETE operations
 - [ ] Performance specific feature implementation to speed up read and write operations
 
